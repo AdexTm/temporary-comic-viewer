@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Просмотрщик фото из ZIP</title>
+    <!-- Подключаем библиотеку для работы с ZIP в браузере -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 20px;
+        }
+        .controls {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            position: sticky;
+            top: 10px;
+            z-index: 100;
+        }
+        input[type="file"], button {
+            padding: 10px 15px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button {
+            background-color: #ff4d4d;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background-color: #cc0000;
+        }
+        #gallery {
+            display: flex;
+            flex-direction: column; /* Располагаем фото друг под другом */
+            align-items: center;
+            gap: 20px; /* Отступ между фотографиями */
+        }
+        #gallery img {
+            max-width: 90%; /* Фото не будут вылезать за пределы экрана */
+            height: auto;
+            border: 5px solid white;
+            border-radius: 4px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <input type="file" id="zipInput" accept=".zip">
+        <button id="clearBtn">Удалить все фото</button>
+    </div>
+
+    <div id="gallery"></div>
+
+    <script>
+        const zipInput = document.getElementById('zipInput');
+        const clearBtn = document.getElementById('clearBtn');
+        const gallery = document.getElementById('gallery');
+        let objectUrls = []; // Храним ссылки на фото для очистки памяти
+
+        // Слушаем выбор файла
+        zipInput.addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // Читаем архив
+            JSZip.loadAsync(file).then(function(zip) {
+                const imagePromises = [];
+
+                zip.forEach(function (relativePath, zipEntry) {
+                    // Ищем только файлы, оканчивающиеся на .jpg или .jpeg
+                    if (!zipEntry.dir && /\.(jpe?g)$/i.test(zipEntry.name)) {
+                        const promise = zipEntry.async("blob").then(function(blob) {
+                            return {
+                                name: zipEntry.name,
+                                blob: blob
+                            };
+                        });
+                        imagePromises.push(promise);
+                    }
+                });
+
+                // Когда все нужные файлы извлечены
+                Promise.all(imagePromises).then(function(images) {
+                    if (images.length === 0) {
+                        alert("В архиве не найдено JPG файлов.");
+                        return;
+                    }
+
+                    // Сортируем файлы по имени с учетом чисел (чтобы 002 шло после 001)
+                    images.sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true}));
+
+                    // Очищаем галерею перед загрузкой новых фото
+                    clearGallery();
+
+                    // Выводим картинки
+                    images.forEach(function(imgData) {
+                        const img = document.createElement('img');
+                        // Создаем временную ссылку на файл в памяти браузера
+                        const url = URL.createObjectURL(imgData.blob);
+                        objectUrls.push(url); 
+                        
+                        img.src = url;
+                        img.title = imgData.name; // Название файла при наведении
+                        gallery.appendChild(img);
+                    });
+                });
+            }).catch(function(err) {
+                alert("Ошибка при чтении ZIP файла: " + err.message);
+            });
+        });
+
+        // Слушаем кнопку удаления
+        clearBtn.addEventListener('click', function() {
+            clearGallery();
+            zipInput.value = ''; // Сбрасываем выбранный файл в инпуте
+        });
+
+        // Функция очистки
+        function clearGallery() {
+            gallery.innerHTML = '';
+            // Освобождаем оперативную память браузера от предыдущих картинок
+            objectUrls.forEach(url => URL.revokeObjectURL(url));
+            objectUrls = [];
+        }
+    </script>
+</body>
+</html>
