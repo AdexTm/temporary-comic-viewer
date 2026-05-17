@@ -7,9 +7,12 @@ const fs = require('fs');
 const app = express();
 const upload = multer({ dest: 'uploads/' }); // Временная папка для загрузки самого ZIP
 
+// Жесткая настройка путей для Render.com
 app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
+app.use(express.static(path.join(__dirname, 'public')));
+
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static('public')); // Раздаем статические файлы (картинки)
 
 // Хранилище структуры папок в оперативной памяти
 let folders = []; 
