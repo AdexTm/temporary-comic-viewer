@@ -5,58 +5,121 @@ const path = require('path');
 const fs = require('fs');
 
 const app = express();
-const upload = multer({ dest: 'uploads/' }); // Временная папка для загрузки самого ZIP
+const upload = multer({ dest: 'uploads/' });
 
-// Жесткая настройка путей для Render.com
-app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
 app.use(express.static(path.join(__dirname, 'public')));
-
 app.use(express.urlencoded({ extended: true }));
 
-// Хранилище структуры папок в оперативной памяти
 let folders = []; 
-// Структура объекта папки: { id: "123", name: "Название", parentId: null }
 
-// Главная страница
+// Главная страница БЕЗ EJS (прямой вывод HTML, чтобы избежать белого экрана)
 app.get('/', (req, res) => {
-    const currentFolderId = req.query.folderId || null;
-    
-    // Фильтруем папки, которые находятся в текущей директории
-    const currentFolders = folders.filter(f => f.parentId === currentFolderId);
-    
-    // Ищем путь (хлебные крошки), чтобы можно было вернуться назад
-    let breadcrumbs = [];
-    let parent = folders.find(f => f.id === currentFolderId);
-    while(parent) {
-        breadcrumbs.unshift(parent);
-        parent = folders.find(f => f.id === parent.parentId);
-    }
-
-    // Проверяем, есть ли картинки в текущей папке
-    let images = [];
-    if (currentFolderId) {
-        const dirPath = path.join(__dirname, 'public', 'uploads', currentFolderId);
-        if (fs.existsSync(dirPath)) {
-            images = fs.readdirSync(dirPath)
-                .filter(file => file.toLowerCase().endsWith('.jpg'))
-                .sort(); // Сортировка по возрастанию (001, 002...)
+    try {
+        const currentFolderId = req.query.folderId || null;
+        const currentFolders = folders.filter(f => f.parentId === currentFolderId);
+        
+        let breadcrumbs = [];
+        let parent = folders.find(f => f.id === currentFolderId);
+        while(parent) {
+            breadcrumbs.unshift(parent);
+            parent = folders.find(f => f.id === parent.parentId);
         }
-    }
 
-    res.render('index', {
-        folders: currentFolders,
-        currentFolderId: currentFolderId,
-        breadcrumbs: breadcrumbs,
-        images: images
-    });
+        let images = [];
+        if (currentFolderId) {
+            const dirPath = path.join(__dirname, 'public', 'uploads', currentFolderId);
+            if (fs.existsSync(dirPath)) {
+                images = fs.readdirSync(dirPath)
+                    .filter(file => file.toLowerCase().endsWith('.jpg'))
+                    .sort();
+            }
+        }
+
+        // Генерируем HTML папок
+        let foldersHtml = currentFolders.length === 0 ? '<p>Папок нет</p>' : '';
+        currentFolders.forEach(f => {
+            foldersHtml += `
+                <div style="background: #2e2e2e; padding: 15px; border-radius: 6px; min-width: 150px; text-align: center;">
+                    <a href="/?folderId=${f.id}" style="display: block; color: #f1c40f; text-shadow: none; font-weight: bold; margin-bottom: 10px; font-size: 18px; text-decoration: none;">📁 ${f.name}</a>
+                    <form action="/rename-folder" method="POST" style="margin-bottom: 5px;">
+                        <input type="hidden" name="folderId" value="${f.id}">
+                        <input type="hidden" name="currentFolderId" value="${currentFolderId || ''}">
+                        <input type="text" name="newName" placeholder="Новое имя" style="width: 100px;" required>
+                        <button type="submit">✏️</button>
+                    </form>
+                    <form action="/delete-folder" method="POST">
+                        <input type="hidden" name="folderId" value="${f.id}">
+                        <input type="hidden" name="currentFolderId" value="${currentFolderId || ''}">
+                        <button type="submit" style="background: #c0392b; color: white; border: none; padding: 3px 10px; cursor: pointer;">❌ Удалить</button>
+                    </form>
+                </div>
+            `;
+        });
+
+        // Gенерируем HTML крошек
+        let crumbsHtml = '<a href="/" style="color: #3498db; text-decoration: none;">Корневая папка</a>';
+        breadcrumbs.forEach(crumb => {
+            crumbsHtml += ` / <a href="/?folderId=${crumb.id}" style="color: #3498db; text-decoration: none;">${crumb.name}</a>`;
+        });
+
+        // Генерируем HTML картинок
+        let imagesHtml = '';
+        images.forEach(img => {
+            imagesHtml += `<img src="/uploads/${currentFolderId}/${img}" style="width: 100%; height: auto; display: block; margin: 0; padding: 0; border: none;" alt="page">`;
+        });
+
+        // Отдаем готовую страницу
+        res.send(`
+            <!DOCTYPE html>
+            <html lang="ru">
+            <head>
+                <meta charset="UTF-8">
+                <title>Временный менеджер комиксов</title>
+                <style>
+                    body { margin: 0; padding: 0; background: #121212; color: #e0e0e0; font-family: sans-serif; }
+                    .sidebar { padding: 20px; background: #1e1e1e; border-bottom: 1px solid #333; }
+                    .breadcrumbs { margin-bottom: 15px; font-size: 14px; }
+                    .folder-list { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; }
+                    .viewer { width: 100%; max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; }
+                </style>
+            </head>
+            <body>
+                <div class="sidebar">
+                    <div class="breadcrumbs">${crumbsHtml}</div>
+                    <form action="/create-folder" method="POST" style="display: inline-block; margin-right: 20px;">
+                        <input type="hidden" name="parentId" value="${currentFolderId || ''}">
+                        <input type="text" name="name" placeholder="Имя новой папки" required>
+                        <button type="submit">+ Создать папку</button>
+                    </form>
+                    ${currentFolderId ? `
+                    <form action="/upload-zip" method="POST" enctype="multipart/form-data" style="display: inline-block;">
+                        <input type="hidden" name="folderId" value="${currentFolderId}">
+                        <input type="file" name="zipFile" accept=".zip" required>
+                        <button type="submit">Загрузить ZIP</button>
+                    </form>
+                    ` : ''}
+                    <form action="/clear-all" method="POST" style="float: right;">
+                        <button type="submit" style="background: #c0392b; color: white; border: none; padding: 5px 10px; cursor: pointer;">Очистить сайт</button>
+                    </form>
+                </div>
+                <div style="padding: 20px;">
+                    <h3>Папки:</h3>
+                    <div class="folder-list">${foldersHtml}</div>
+                </div>
+                <div class="viewer">${imagesHtml}</div>
+            </body>
+            </html>
+        `);
+    } catch (err) {
+        res.status(500).send("Ошибка сервера: " + err.message);
+    }
 });
 
 // Создание папки
 app.post('/create-folder', (req, res) => {
     const { name, parentId } = req.body;
     const newFolder = {
-        id: Date.now().toString(), // Простая генерация ID
+        id: Date.now().toString(),
         name: name,
         parentId: parentId || null
     };
@@ -64,7 +127,7 @@ app.post('/create-folder', (req, res) => {
     res.redirect(parentId ? `/?folderId=${parentId}` : '/');
 });
 
-// Переименование папки
+// Переименование
 app.post('/rename-folder', (req, res) => {
     const { folderId, newName, currentFolderId } = req.body;
     const folder = folders.find(f => f.id === folderId);
@@ -72,30 +135,24 @@ app.post('/rename-folder', (req, res) => {
     res.redirect(currentFolderId ? `/?folderId=${currentFolderId}` : '/');
 });
 
-// Рекурсивное удаление папок и их содержимого
+// Рекурсивное удаление
 function deleteFolderRecursive(folderId) {
-    // Находим детей
     const children = folders.filter(f => f.parentId === folderId);
     children.forEach(child => deleteFolderRecursive(child.id));
-
-    // Удаляем физические картинки
     const dirPath = path.join(__dirname, 'public', 'uploads', folderId);
     if (fs.existsSync(dirPath)) {
         fs.rmSync(dirPath, { recursive: true, force: true });
     }
-
-    // Удаляем из массива в памяти
     folders = folders.filter(f => f.id !== folderId);
 }
 
-// Удаление папки
 app.post('/delete-folder', (req, res) => {
     const { folderId, currentFolderId } = req.body;
     deleteFolderRecursive(folderId);
     res.redirect(currentFolderId ? `/?folderId=${currentFolderId}` : '/');
 });
 
-// Загрузка и распаковка ZIP
+// Распаковка ZIP
 app.post('/upload-zip', upload.single('zipFile'), (req, res) => {
     const { folderId } = req.body;
     if (!req.file || !folderId) return res.status(400).send('Ошибка загрузки');
@@ -109,13 +166,10 @@ app.post('/upload-zip', upload.single('zipFile'), (req, res) => {
 
         zipEntries.forEach(entry => {
             if (!entry.isDirectory && entry.entryName.toLowerCase().endsWith('.jpg') && !entry.entryName.includes('__MACOSX')) {
-                // Сохраняем файл под его оригинальным именем (например, 001.jpg)
-                const fileData = entry.getData();
-                fs.writeFileSync(path.join(targetDir, entry.name), fileData);
+                fs.writeFileSync(path.join(targetDir, entry.name), entry.getData());
             }
         });
 
-        // Удаляем временный zip архив
         fs.unlinkSync(req.file.path);
         res.redirect(`/?folderId=${folderId}`);
     } catch (err) {
@@ -123,7 +177,7 @@ app.post('/upload-zip', upload.single('zipFile'), (req, res) => {
     }
 });
 
-// Удалить ВСЕ данные на сайте вручную
+// Очистить всё
 app.post('/clear-all', (req, res) => {
     folders = [];
     const uploadsDir = path.join(__dirname, 'public', 'uploads');
