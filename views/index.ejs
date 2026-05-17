@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Менеджер Комиксов (Временный)</title>
+    <style>
+        body { margin: 0; padding: 0; background: #121212; color: #e0e0e0; font-family: sans-serif; }
+        .sidebar { padding: 20px; background: #1e1e1e; border-bottom: 1px solid #333; }
+        .breadcrumbs { margin-bottom: 15px; font-size: 14px; }
+        .breadcrumbs a { color: #3498db; text-decoration: none; }
+        .folder-list { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; }
+        .folder-card { background: #2e2e2e; padding: 15px; border-radius: 6px; min-width: 150px; text-align: center; }
+        .folder-link { display: block; color: #f1c40f; text-decoration: none; font-weight: bold; margin-bottom: 10px; font-size: 18px; }
+        
+        /* Лента картинок от края до края без стыков */
+        .viewer { width: 100%; max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; }
+        .viewer img { width: 100%; height: auto; display: block; margin: 0; padding: 0; border: none; }
+        
+        button { cursor: pointer; padding: 5px 10px; background: #34495e; color: white; border: none; border-radius: 4px; }
+        .btn-danger { background: #c0392b; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <!-- Хлебные крошки (Навигация по вложенным папкам) -->
+    <div class="breadcrumbs">
+        <a href="/">Корневая папка</a> 
+        <% breadcrumbs.forEach(function(crumb) { %>
+            / <a href="/?folderId=<%= crumb.id %>"><%= crumb.name %></a>
+        <% }); %>
+    </div>
+
+    <!-- Создание папки -->
+    <form action="/create-folder" method="POST" style="display: inline-block; margin-right: 20px;">
+        <input type="hidden" name="parentId" value="<%= currentFolderId %>">
+        <input type="text" name="name" placeholder="Имя новой папки" required>
+        <button type="submit">+ Создать папку</button>
+    </form>
+
+    <!-- Если мы внутри папки — показываем загрузку ZIP -->
+    <% if (currentFolderId) { %>
+        <form action="/upload-zip" method="POST" enctype="multipart/form-data" style="display: inline-block;">
+            <input type="hidden" name="folderId" value="<%= currentFolderId %>">
+            <input type="file" name="zipFile" accept=".zip" required>
+            <button type="submit">Загрузить ZIP в эту папку</button>
+        </form>
+    <% } %>
+
+    <form action="/clear-all" method="POST" style="float: right;" onsubmit="return confirm('Стереть абсолютно все папки и фото?')">
+        <button type="submit" class="btn-danger">Очистить весь сайт</button>
+    </form>
+</div>
+
+<div style="padding: 20px;">
+    <h3>Папки внутри текущей директории:</h3>
+    <div class="folder-list">
+        <% if (folders.length === 0) { %> <p>Папок нет</p> <% } %>
+        
+        <% folders.forEach(function(folder) { %>
+            <div class="folder-card">
+                <a class="folder-link" href="/?folderId=<%= folder.id %>">📁 <%= folder.name %></a>
+                
+                <!-- Переименование -->
+                <form action="/rename-folder" method="POST" style="margin-bottom: 5px;">
+                    <input type="hidden" name="folderId" value="<%= folder.id %>">
+                    <input type="hidden" name="currentFolderId" value="<%= currentFolderId %>">
+                    <input type="text" name="newName" placeholder="Новое имя" style="width: 100px;" required>
+                    <button type="submit">✏️</button>
+                </form>
+
+                <!-- Удаление -->
+                <form action="/delete-folder" method="POST">
+                    <input type="hidden" name="folderId" value="<%= folder.id %>">
+                    <input type="hidden" name="currentFolderId" value="<%= currentFolderId %>">
+                    <button type="submit" class="btn-danger">❌ Удалить</button>
+                </form>
+            </div>
+        <% }); %>
+    </div>
+</div>
+
+<!-- Бесшовная лента изображений -->
+<div class="viewer">
+    <% images.forEach(function(img) { %>
+        <img src="/uploads/<%= currentFolderId %>/<%= img %>" alt="page">
+    <% }); %>
+</div>
+
+</body>
+</html>
